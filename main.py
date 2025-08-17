@@ -1,52 +1,11 @@
 import socket
-import json
 import threading
 import argparse
-import re
+from Message import Message, ParseError
 
 LOGGING = True
-IRC_MSG_PATTERN = re.compile(r'^(?:@(?P<tags>[^\r\n ]*) +|())(?:[:](?P<nick>[^\s!@]+)(?:!(?P<user>[^\s@]+))?(?:@(?P<host>[^\s]+))? +|())(?P<command>[^\r\n ]+)(?: +(?P<middle_params>[^:\r\n ]+[^\r\n ]*(?: +[^:\r\n ]+[^\r\n ]*)*)|())?(?: +:(?P<trailing>[^\r\n]*)| +())?[\r\n]*$') 
 
-
-class Message:
-    def __init__(self, tags, nick, user, host, command, middle_params, trailing):
-        self.tags = tags 
-        self.nick = nick
-        self.user = user
-        self.host = host
-        self.command = command
-        self.middle_params = middle_params
-        self.trailing = trailing
-
-    @classmethod
-    def from_irc(cls, raw_line):
-        raw_line = raw_line.strip()
-        match = IRC_MSG_PATTERN.match(raw_line)
-        if match:
-            groups = match.groupdict()
-            return cls(
-                tags=groups.get("tags"),
-                nick=groups.get("nick"),
-                user=groups.get("user"),
-                host=groups.get("host"),
-                command=groups.get("command"),
-                middle_params=groups.get("middle_params"),
-                trailing=groups.get("trailing")
-            )
-        return None
-
-    def __str__(self):
-        return json.dumps({
-            "tags": self.tags,
-            "nick": self.nick,
-            "user": self.user,
-            "host": self.host,
-            "command": self.command,
-            "middle_params": self.middle_params,
-            "trailing": self.trailing
-        }, ensure_ascii=False)
-
-def receive_messages(irc_socket):
+def receive_messages(irc_socket) -> None:
     while True:
         try:
             response = irc_socket.recv(2048).decode("utf-8", errors="ignore")
@@ -63,11 +22,14 @@ def receive_messages(irc_socket):
                     msg = Message.from_irc(line)
                     if LOGGING:
                         print(msg)
+        except ParseError as e:
+            print(f"Error: {e}")
+            continue
         except Exception as e:
             print(f"Error: {e}")
             break
 
-def main(ip, port, nick, realname, username):
+def establish_socket(ip, port, nick, realname, username) -> socket.socket:
     irc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     irc_socket.connect((ip, port))
     
@@ -75,16 +37,21 @@ def main(ip, port, nick, realname, username):
     irc_socket.send(f"nick {nick}\r\n".encode("utf-8"))
     
     threading.Thread(target=receive_messages, args=(irc_socket,), daemon=True).start()
+    return irc_socket
 
+def send_message(socket: socket.socket, message: Message) -> None:
+    socket.send((f"{message.command} {message.middle_params} {message.trailing}" + "\r\n").encode("utf-8"))
+
+def main(ip, port, nick, realname, username):
+    irc_socket = establish_socket(ip, port, nick, realname, username)
     try:
         while True:
-            command = input()
-            if command.lower() in ["quit", "exit"]:
-                irc_socket.send("QUIT\r\n".encode("utf-8"))
+            message = Message.from_command(input(), nick=nick, user=username)
+            send_message(irc_socket, message)
+            if message.command.lower() in ["quit", "exit"]:
                 break
-            irc_socket.send((command + "\r\n").encode("utf-8"))
     except KeyboardInterrupt:
-        irc_socket.send("QUIT\r\n".encode("utf-8"))
+        send_message(irc_socket, Message.from_command("QUIT", nick=nick, user=username))
     finally:
         irc_socket.close()
 
