@@ -1,49 +1,11 @@
-import socket
-import threading
 import argparse
-from Message import Message, ParseError
+from Message import Message
+from irc_socket import establish_socket, send_message
 
 LOGGING = True
 
-def receive_messages(irc_socket) -> None:
-    while True:
-        try:
-            response = irc_socket.recv(2048).decode("utf-8", errors="ignore")
-            if not response:
-                print("Disconnected from server.")
-                break
-
-            lines = response.strip().split("\r\n")
-            for line in lines:
-                if line.startswith("PING"):
-                    pong_response = "PONG " + line.split()[1] + "\r\n"
-                    irc_socket.send(pong_response.encode("utf-8"))
-                else:
-                    msg = Message.from_irc(line)
-                    if LOGGING:
-                        print(msg)
-        except ParseError as e:
-            print(f"Error: {e}")
-            continue
-        except Exception as e:
-            print(f"Error: {e}")
-            break
-
-def establish_socket(ip, port, nick, realname, username) -> socket.socket:
-    irc_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    irc_socket.connect((ip, port))
-    
-    irc_socket.send(f"USER {username} 0 * :{realname}\r\n".encode("utf-8"))
-    irc_socket.send(f"nick {nick}\r\n".encode("utf-8"))
-    
-    threading.Thread(target=receive_messages, args=(irc_socket,), daemon=True).start()
-    return irc_socket
-
-def send_message(socket: socket.socket, message: Message) -> None:
-    socket.send((f"{message.command} {message.middle_params} {message.trailing}" + "\r\n").encode("utf-8"))
-
 def main(ip, port, nick, realname, username):
-    irc_socket = establish_socket(ip, port, nick, realname, username)
+    irc_socket = establish_socket(ip, port, nick, realname, username, LOGGING)
     try:
         while True:
             message = Message.from_command(input(), nick=nick, user=username)
