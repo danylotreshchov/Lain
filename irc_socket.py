@@ -1,4 +1,6 @@
 import socket
+from sqlite3 import DatabaseError
+import DB
 import threading
 from Message import Message, ParseError
 
@@ -17,6 +19,7 @@ def receive_messages(irc_socket, logging) -> None:
                     irc_socket.send(pong_response.encode("utf-8"))
                 else:
                     msg = Message.from_irc(line)
+                    DB.Database.add_message(DB.Database(), message=msg)
                     if logging:
                         print(msg)
         except ParseError as e:
@@ -37,6 +40,11 @@ def establish_socket(ip, port, nick, realname, username, logging=True) -> socket
     return irc_socket
 
 def send_message(socket: socket.socket, message: Message) -> None:
-    socket.send((f"{message.command} {message.middle_params} {message.trailing}" + "\r\n").encode("utf-8"))
-
+    try: 
+        DB.Database.add_message(DB.Database(), message)
+        socket.send((f"{message.command} {message.middle_params} {message.trailing}" + "\r\n").encode("utf-8"))
+    except DatabaseError as e:
+        print(e)
+    except Exception as e:
+        print(e)
 

@@ -8,7 +8,7 @@ class ParseError(Exception):
     pass
 
 class Message:
-    def __init__(self, tags, nick, user, host, command, middle_params, trailing):
+    def __init__(self, tags = "", nick = "", user = "", host = "", command = "", middle_params = "", trailing = ""):
         self.tags = tags 
         self.nick = nick
         self.user = user
@@ -25,17 +25,17 @@ class Message:
             raise ParseError(f"Couldn't parse {raw_line} into a message")    
         groups = match.groupdict()
         return cls(
-            tags=groups.get("tags"),
-            nick=groups.get("nick"),
-            user=groups.get("user"),
-            host=groups.get("host"),
-            command=groups.get("command"),
-            middle_params=groups.get("middle_params"),
-            trailing=groups.get("trailing")
+            tags=str(groups.get("tags")),
+            nick=str(groups.get("nick")),
+            user=str(groups.get("user")),
+            host=str(groups.get("host")),
+            command=str(groups.get("command")),
+            middle_params=str(groups.get("middle_params")),
+            trailing=str(groups.get("trailing"))
         )
 
     @classmethod
-    def from_command(cls, raw_line, tags = None, nick = None, user = None, host = "localhost"):
+    def from_command(cls, raw_line, tags = "", nick = "", user = "", host = "localhost"):
         raw_line = raw_line.strip()
         match = COMMAND_MSG_PATTERN.match(raw_line)
         if not match:
@@ -46,9 +46,9 @@ class Message:
             nick=nick,
             user=user,
             host=host,
-            command=groups.get("command"),
-            middle_params=groups.get("middle_params"),
-            trailing=groups.get("trailing")
+            command=str(groups.get("command")),
+            middle_params=str(groups.get("middle_params")),
+            trailing=str(groups.get("trailing"))
         )
 
     def __str__(self) -> str:
