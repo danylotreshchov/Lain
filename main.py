@@ -1,21 +1,15 @@
 import argparse
-from Message import Message
-from irc_socket import establish_socket, send_message
+from Lain import Lain
 
 LOGGING = True
 
 def main(ip, port, nick, realname, username):
-    irc_socket = establish_socket(ip, port, nick, realname, username, LOGGING)
+    lain = Lain(ip, port, nick, realname, username, LOGGING)
     try:
-        while True:
-            message = Message.from_command(input(), nick=nick, user=username)
-            send_message(irc_socket, message)
-            if message.command.lower() in ["quit", "exit"]:
-                break
+        lain.start()  
     except KeyboardInterrupt:
-        send_message(irc_socket, Message.from_command("QUIT", nick=nick, user=username))
-    finally:
-        irc_socket.close()
+        print("KeyboardInterrupt received, shutting down...")
+        lain.stop()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser('DeathStarBench social graph initializer.')

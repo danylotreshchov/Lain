@@ -1,0 +1,93 @@
+import queue
+import threading
+import DB
+from Message import Message
+from Event import Event
+import irc_socket
+
+class Lain:
+    def __init__(self, ip, port, nick, realname, username, logging=True) -> None:
+        self.event_queue = queue.Queue()
+        self.running = True
+        self.handlers = {}
+        self.ip = ip
+        self.port = port
+        self.nick = nick
+        self.realname = realname
+        self.username = username
+        self.logging = logging
+
+        self.irc_socket = None 
+        self.db = DB.Database()
+        self.register_handler("irc_message", lambda e: self.handle_irc_message(e))
+        self.register_handler("send_message", lambda e: self.handle_irc_message(e))
+
+    def register_handler(self, event_type, handler_func):
+        if event_type not in self.handlers:
+            self.handlers[event_type] = []
+        self.handlers[event_type].append(handler_func)
+
+    def create_event(self, event):
+        self.event_queue.put(event)
+
+    def event_loop(self):
+        while self.running:
+            try:
+                event = self.event_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+
+            if event.type in self.handlers:
+                for handler in self.handlers[event.type]:
+                    handler(event)
+                    # threading.Thread(target=handler, args=(event,), daemon=True).start()
+
+    def start(self):
+        self.irc_socket = self.start_irc_socket()
+        self.start_keyboard_listener()
+        self.event_loop()
+
+    def stop(self):
+        self.running = False
+        if not self.irc_socket:
+            return
+        try:
+            self.irc_socket.close()
+        except Exception as e:
+            print(e)
+
+    def handle_irc_message(self, event):
+        msg = event.data["message"]
+        if not msg:
+            raise ValueError("Received IRC message event with no 'message' in event.data")
+        self.db.add_message(message=msg)
+        if self.logging:
+            print(msg)
+
+    def handle_send_messgae(self, event):
+        msg = event.data["message"]
+        if not msg:
+            raise ValueError("Received IRC message event with no 'message' in event.data")
+        if not self.irc_socket:
+            raise RuntimeError("IRC socket is not initialized or already closed")
+        irc_socket.send_message(self.irc_socket, msg)
+        self.db.add_message(message=msg)
+        if self.logging:
+            print(msg)
+
+    def start_irc_socket(self):
+        return irc_socket.establish_socket(self.ip, self.port, self.nick, self.realname, self.username, self)
+
+    def start_keyboard_listener(self):
+        def keyboard_listener():
+            while True:
+                user_input = input()
+                if not user_input.strip():
+                    continue
+                event = Event(
+                    type="send_message",
+                    data={"message": Message.from_command(user_input, nick=self.nick, user=self.username)}
+                )
+                self.create_event(event)
+
+        threading.Thread(target=keyboard_listener, daemon=True).start()
