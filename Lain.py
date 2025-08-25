@@ -39,8 +39,8 @@ class Lain:
 
             if event.type in self.handlers:
                 for handler in self.handlers[event.type]:
-                    handler(event)
-                    # threading.Thread(target=handler, args=(event,), daemon=True).start()
+                    # handler(event)
+                    threading.Thread(target=handler, args=(event,), daemon=True).start()
 
     def start(self):
         self.irc_socket = self.start_irc_socket()

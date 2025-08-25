@@ -1,5 +1,6 @@
 import sqlite3
 import threading
+import queue
 from Message import Message
 
 class Database:
@@ -16,14 +17,25 @@ class Database:
     def __init__(self, db_path: str = "chat.db"):
         if self._initialized:
             return
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.cursor = self.conn.cursor()
+        self.write_conn = sqlite3.connect(db_path, check_same_thread=False)
+        self.write_conn.row_factory = sqlite3.Row
+        self.write_cursor = self.write_conn.cursor()
+
+        self.read_conn = sqlite3.connect(db_path, check_same_thread=False)
+        self.read_conn.row_factory = sqlite3.Row
+        self.read_cursor = self.read_conn.cursor()
+
         self._create_tables()
+
+        self.write_queue = queue.Queue()
+        self.running = True
+        self.worker = threading.Thread(target=self._process_writes, daemon=True)
+        self.worker.start()
+
         self._initialized = True
 
     def _create_tables(self):
-        self.cursor.execute("""
+        self.write_cursor.execute("""
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -47,21 +59,33 @@ class Database:
         #     )
         # """)
         #
-        self.conn.commit()
+        self.write_conn.commit()
+
+    def _process_writes(self):
+        while self.running:
+            try:
+                func, args, kwargs = self.write_queue.get(timeout=1)
+                func(*args, **kwargs)
+                self.write_conn.commit()
+                self.write_queue.task_done()
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(e)
 
     def add_message(self, message: Message):
-        self.cursor.execute(
-            "INSERT INTO messages (tags, nick, user, host, command, middle_params, trailing) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (message.tags, message.nick, message.user, message.host, message.command, message.middle_params, message.trailing),
-        )
-        message_id = self.cursor.lastrowid
-        self.conn.commit()
-        if not message_id:
-            raise sqlite3.DatabaseError(f"Couldn't get the id of the new Message {message}")
-        return message_id
+        def _insert(msg: Message):
+            self.write_cursor.execute(
+                "INSERT INTO messages (tags, nick, user, host, command, middle_params, trailing) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (msg.tags, msg.nick, msg.user, msg.host, msg.command,
+                 msg.middle_params, msg.trailing),
+            )
+
+        self.write_queue.put((_insert, (message,), {}))
 
     def get_message_history(self, message_id: int, context_window: int = 10):
-        self.cursor.execute(
+        self.read_cursor.execute(
             """
             SELECT * FROM messages
             WHERE id <= ?
@@ -70,4 +94,10 @@ class Database:
             """,
             (message_id, context_window),
         )
-        return self.cursor.fetchall()
+        return self.read_cursor.fetchall()
+
+    def stop(self):
+        self.running = False
+        self.worker.join(timeout=2)
+        self.write_conn.close()
+        self.read_conn.close()
