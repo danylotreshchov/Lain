@@ -20,7 +20,7 @@ def receive_messages(irc_socket, lain) -> None:
                 else:
                     msg = Message.from_irc(line)
                     event = Event(
-                    type="send_message",
+                    type="irc_message",
                     data={"message": msg})
                     lain.create_event(event)
         except ParseError as e:
@@ -43,7 +43,5 @@ def establish_socket(ip, port, nick, realname, username, lain, logging=True) -> 
 def send_message(socket: socket.socket, message: Message) -> None:
     try: 
         socket.send((f"{message.command} {message.middle_params} {message.trailing}" + "\r\n").encode("utf-8"))
-    except DatabaseError as e:
-        print(e)
     except Exception as e:
         print(e)

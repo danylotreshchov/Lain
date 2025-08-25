@@ -20,7 +20,7 @@ class Lain:
         self.irc_socket = None 
         self.db = DB.Database()
         self.register_handler("irc_message", lambda e: self.handle_irc_message(e))
-        self.register_handler("send_message", lambda e: self.handle_irc_message(e))
+        self.register_handler("send_message", lambda e: self.handle_send_message(e))
 
     def register_handler(self, event_type, handler_func):
         if event_type not in self.handlers:
@@ -64,7 +64,7 @@ class Lain:
         if self.logging:
             print(msg)
 
-    def handle_send_messgae(self, event):
+    def handle_send_message(self, event):
         msg = event.data["message"]
         if not msg:
             raise ValueError("Received IRC message event with no 'message' in event.data")
