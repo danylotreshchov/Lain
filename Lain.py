@@ -70,13 +70,15 @@ class Lain:
             raise ValueError("Received IRC message event with no 'message' in event.data")
         if not self.irc_socket:
             raise RuntimeError("IRC socket is not initialized or already closed")
-        irc_socket.send_message(self.irc_socket, msg)
+        self.irc_socket.send_message(msg)
         self.db.add_message(message=msg)
         if self.logging:
             print(msg)
 
     def start_irc_socket(self):
-        return irc_socket.establish_socket(self.ip, self.port, self.nick, self.realname, self.username, self)
+        sock = irc_socket.IRCSocket(self.ip, self.port, self.nick, self.realname, self.username, self.create_event)
+        sock.connect()
+        return sock
 
     def start_keyboard_listener(self):
         def keyboard_listener():
