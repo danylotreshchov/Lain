@@ -8,7 +8,7 @@ class ParseError(Exception):
     pass
 
 class Message:
-    def __init__(self, tags = "", nick = "", user = "", host = "", command = "", middle_params = "", trailing = ""):
+    def __init__(self, full_text = "", tags = "", nick = "", user = "", host = "", command = "", middle_params = "", trailing = ""):
         self.tags = tags 
         self.nick = nick
         self.user = user
@@ -16,6 +16,7 @@ class Message:
         self.command = command
         self.middle_params = middle_params
         self.trailing = trailing
+        self.full_text = full_text
 
     @classmethod
     def from_irc(cls, raw_line):
@@ -25,6 +26,7 @@ class Message:
             raise ParseError(f"Couldn't parse {raw_line} into a message")    
         groups = match.groupdict()
         return cls(
+            full_text = raw_line,
             tags=str(groups.get("tags")),
             nick=str(groups.get("nick")),
             user=str(groups.get("user")),
@@ -42,6 +44,7 @@ class Message:
             raise ParseError(f"Command \"{raw_line}\" couldn't be parsed into Message")
         groups = match.groupdict()
         return cls(
+            full_text=raw_line,
             tags=tags,
             nick=nick,
             user=user,

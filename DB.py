@@ -24,6 +24,7 @@ class Database:
         self.read_conn = sqlite3.connect(db_path, check_same_thread=False)
         self.read_conn.row_factory = sqlite3.Row
         self.read_cursor = self.read_conn.cursor()
+        self.read_lock = threading.Lock()
 
         self._create_tables()
 
@@ -39,6 +40,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                full_text TEXT,
                 tags TEXT,
                 nick TEXT,
                 user TEXT,
@@ -76,25 +78,44 @@ class Database:
     def add_message(self, message: Message):
         def _insert(msg: Message):
             self.write_cursor.execute(
-                "INSERT INTO messages (tags, nick, user, host, command, middle_params, trailing) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (msg.tags, msg.nick, msg.user, msg.host, msg.command,
+                "INSERT INTO messages (full_text, tags, nick, user, host, command, middle_params, trailing) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (msg.full_text, msg.tags, msg.nick, msg.user, msg.host, msg.command,
                  msg.middle_params, msg.trailing),
             )
 
         self.write_queue.put((_insert, (message,), {}))
 
-    def get_message_history(self, message_id: int, context_window: int = 10):
-        self.read_cursor.execute(
-            """
-            SELECT * FROM messages
-            WHERE id <= ?
-            ORDER BY timestamp DESC
-            LIMIT ?
-            """,
-            (message_id, context_window),
-        )
-        return self.read_cursor.fetchall()
+    def get_message_history(self, context_window: int = 10):
+        allowed_commands = {"JOIN", "PRIVMSG", "421", "366", "353", "001"}
+        with self.read_lock:
+            self.read_cursor.execute(
+                """
+                SELECT * FROM messages
+                WHERE 
+                    (command GLOB '*[A-Z]*')
+                    OR
+                    command IN ({})
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """.format(",".join("?" * len(allowed_commands))),
+                (*allowed_commands, context_window),
+            )
+            rows = self.read_cursor.fetchall()
+            messages = []
+            for row in rows:
+                msg = Message(
+                    full_text=row["full_text"],
+                    tags=row["tags"],
+                    nick=row["nick"],
+                    user=row["user"],
+                    host=row["host"],
+                    command=row["command"],
+                    middle_params=row["middle_params"],
+                    trailing=row["trailing"]
+                )
+                messages.append(msg)
+            return messages
 
     def stop(self):
         self.running = False
